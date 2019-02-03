@@ -1,5 +1,5 @@
 import fetch from 'cross-fetch';
-import { encodeOps } from 'steem-uri';
+import steem from 'steem';
 
 class SDKError extends Error {
   constructor(message, obj) {
@@ -17,13 +17,25 @@ class SDKError extends Error {
 
 function SteemConnect() {
   this.options = {
+    masterAccount: '',
+    masterAccountWif: '',
+    authURL: '',
     baseURL: 'https://steemconnect.com',
     app: '',
     callbackURL: '',
-    scope: [],
+    scope: ['login'],
   };
 }
 
+SteemConnect.prototype.setMasterAccount = function setmMasterAccount(masterAccount) {
+  this.options.masterAccount = masterAccount;
+};
+SteemConnect.prototype.setMasterAccountWif = function setMasterAccountWif(masterAccountWif) {
+  this.options.masterAccountWif = masterAccountWif;
+};
+SteemConnect.prototype.setAuthURL = function setAuthURL(authURL) {
+  this.options.authURL = authURL;
+};
 SteemConnect.prototype.setBaseURL = function setBaseURL(baseURL) {
   this.options.baseURL = baseURL;
 };
@@ -39,10 +51,14 @@ SteemConnect.prototype.setAccessToken = function setAccessToken(accessToken) {
 SteemConnect.prototype.removeAccessToken = function removeAccessToken() {
   this.options.accessToken = undefined;
 };
-SteemConnect.prototype.setScope = function setScope(scope) {
-  this.options.scope = scope;
+SteemConnect.prototype.setScope = function setScope() {
+  this.options.scope = ['login'];
 };
-
+SteemConnect.prototype.getAuthURL = function getAuthURL() {
+  return `${this.options.baseURL}/authorize/@${
+    this.options.masterAccount
+  }?auto_return=true&redirect_uri=${this.options.authURL}`;
+};
 SteemConnect.prototype.getLoginURL = function getLoginURL(state) {
   let loginURL = `${this.options.baseURL}/oauth2/authorize?client_id=${
     this.options.app
@@ -53,43 +69,68 @@ SteemConnect.prototype.getLoginURL = function getLoginURL(state) {
 };
 
 SteemConnect.prototype.send = function send(route, method, body, cb) {
-  const url = `${this.options.baseURL}/api/${route}`;
-  const promise = fetch(url, {
-    method,
-    headers: {
-      Accept: 'application/json, text/plain, */*',
-      'Content-Type': 'application/json',
-      Authorization: this.options.accessToken,
-    },
-    body: JSON.stringify(body),
-  })
-    .then(res => {
-      const json = res.json();
-      // If the status is something other than 200 we need
-      // to reject the result since the request is not considered as a fail
-      if (res.status !== 200) {
-        return json.then(result => Promise.reject(new SDKError('sc2-sdk error', result)));
-      }
-      return json;
+  if (route === 'me') {
+    const url = `${this.options.baseURL}/api/${route}`;
+    const promise = fetch(url, {
+      method,
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        'Content-Type': 'application/json',
+        Authorization: this.options.accessToken,
+      },
+      body: JSON.stringify(body),
     })
-    .then(res => {
-      if (res.error) {
-        return Promise.reject(new SDKError('sc2-sdk error', res));
-      }
-      return res;
-    });
+      .then(res => {
+        const json = res.json();
+        // If the status is something other than 200 we need
+        // to reject the result since the request is not considered as a fail
+        if (res.status !== 200) {
+          return json.then(result => Promise.reject(new SDKError('sc2-sdk error', result)));
+        }
+        return json;
+      })
+      .then(res => {
+        if (res.error) {
+          return Promise.reject(new SDKError('sc2-sdk error', res));
+        }
+        return res;
+      });
 
-  if (!cb) return promise;
+    if (!cb) return promise;
 
-  return promise.then(res => cb(null, res)).catch(err => cb(err, null));
+    return promise.then(res => cb(null, res)).catch(err => cb(err, null));
+  }
+  return new Promise(() => {
+    steem.broadcast.send(
+      {
+        operations: body.operations,
+      },
+      { posting: this.options.masterAccountWif },
+      (err, result) => {
+        if (err) {
+          cb(err, null);
+        } else {
+          cb(null, result);
+        }
+      },
+    );
+  });
 };
 
 SteemConnect.prototype.broadcast = function broadcast(operations, cb) {
-  if (window && window._steemconnect) {
-    const uri = encodeOps(operations);
-    return window._steemconnect.sign(uri, cb);
-  }
   return this.send('broadcast', 'POST', { operations }, cb);
+};
+
+SteemConnect.prototype.verifyAccess = async function verifyAccess(role = 'posting') {
+  return new Promise((resolve, reject) => {
+    this.send('me', 'POST', {}, (err, me) => {
+      if (err !== null) {
+        reject(err);
+      } else {
+        resolve(me.account[role].account_auths.map(x => x[0]).includes(this.options.masterAccount));
+      }
+    });
+  });
 };
 
 SteemConnect.prototype.me = function me(cb) {
@@ -226,6 +267,7 @@ SteemConnect.prototype.sign = function sign(name, params, redirectUri) {
 
 const Initialize = function Initialize(config) {
   const instance = new SteemConnect();
+  console.log('Welcome to SteemConnect AUTH2 Edition');
 
   if (!config) {
     throw new Error('You have to provide config');
@@ -235,11 +277,14 @@ const Initialize = function Initialize(config) {
     throw new Error('Config must be an object');
   }
 
+  if (config.masterAccount) instance.setMasterAccount(config.masterAccount);
+  if (config.masterAccountWif) instance.setMasterAccountWif(config.masterAccountWif);
+  if (config.authURL) instance.setAuthURL(config.authURL);
   if (config.baseURL) instance.setBaseURL(config.baseURL);
   if (config.app) instance.setApp(config.app);
   if (config.callbackURL) instance.setCallbackURL(config.callbackURL);
   if (config.accessToken) instance.setAccessToken(config.accessToken);
-  if (config.scope) instance.setScope(config.scope);
+  instance.setScope();
 
   return instance;
 };

@@ -4,7 +4,7 @@
 
 # SteemConnect.js
 
-SteemConnect JavaScript SDK.
+SteemConnect JavaScript SDK. This version only supports the `login` scope!!!
 
 ## Getting started
 
@@ -12,20 +12,9 @@ To install and run SteemConnect.js, follow this quick start guide
 
 ### Install
 
-SteemConnect.js was designed to work both in the browser and in Node.js.
-
-#### Node.js
 To install SteemConnect.js on Node.js, open your terminal and run:
 ```
-npm i steemconnect --save
-```
-
-#### Browser
-
-You can create an index.html file and include SteemConnect.js with:
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/steemconnect@latest"></script>
+npm i steemconnect-od --save
 ```
 
 ### Usage
@@ -39,16 +28,21 @@ For general information about SteemConnect V2 and setting up your app you can fo
 ### Init SDK
 Call the Initialize() method when your app first loads to initialize the SDK:
 ```
-var sc2 = require('steemconnect');
+var sc2 = require('steemconnect-od');
 
 var api = sc2.Initialize({
+  masterAccount: 'oracle-d',
+  masterAccountWif: '5esdf',
+  authURL: `http://localhost:8000/auth`,
   app: 'busy',
   callbackURL: 'http://localhost:8000/demo/',
-  accessToken: 'access_token',
-  scope: ['vote', 'comment']
+  accessToken: 'access_token'
 });
 ```
 Parameters:
+- __masterAccount__: This is the account that will broadcast all operations
+- __masterAccountWif__: This is the private WIF of the master account
+- __authURL__: This is the redirect url for the posting auth request
 - __app__: This is the name of the app that was registered in the SteemConnect V2 dashboard
 - __callbackURL__: This is the URL that users will be redirected to after interacting with SC2. It must be listed in the "Redirect URI(s)" list in the app settings EXACTLY the same as it is specified here
 - __accessToken__: If you have an oauth2 access token for this user already you can specify it here, otherwise you can leave it and set it later using sc2.setAccessToken(accessToken).
@@ -86,6 +80,19 @@ If it is successful, the result will be a JSON object with the following propert
   user_metadata: {},
   _id: "yabapmatt"
 }
+```
+
+### Verify that the master account has access to the current user
+
+```
+let role = 'posting';
+api.verifyAccess(role).then(access => {
+  if (access === false) {
+    // master account has no access
+  } else {
+    // master account has access
+  }
+})
 ```
 
 ### Vote
@@ -139,6 +146,7 @@ api.revokeToken(function (err, res) {
   console.log(err, res)
 });
 ```
+**This will not revoke the access the master account has to the users account**
 
 ### Reblog
 ```
@@ -183,6 +191,9 @@ api.updateUserMetadata(metadata, function (err, res) {
 ```
 
 ## Changelog
+
+#### 2.1.0
+- Fork from main repository
 
 #### 2.0.0
 - Update to Webpack 4, fix import issue #50
