@@ -1,6 +1,6 @@
 {
   "name": "steemconnect-od",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "SteemConnect JavaScript SDK",
   "homepage": "https://steemconnect.com",
   "browser": "dist/sc2.min.js",
